@@ -86,6 +86,8 @@ void setup() {
   Serial.println(" done.");
   */
 
+  Serial.println("Chip erase destroys all flash, including the bootloader.");
+  Serial.println("The target enumerates over USB only if fw.bin contains a USB image.");
   Serial.print("Erasing... ");
   dap.erase();
   Serial.println(" done.");
@@ -100,13 +102,53 @@ void setup() {
       dap.programBlock(addr, buf);
       addr += BUFSIZE;
   }
-  dataFile.close();
   Serial.println(millis() - t);
-  Serial.println("\nDone!");
+
+  // program_start() switches to the fastest SWD clock. Slow down so the
+  // read-back is not a second source of mismatches.
   dap.dap_set_clock(50);
+  if (!dataFile.seek(0)) {
+    error("Couldn't rewind file");
+  }
+
+  uint8_t check[BUFSIZE];
+  addr = 0;
+  Serial.print("Verifying... ");
+  while (dataFile.available()) {
+    memset(buf, 0xFF, BUFSIZE);
+    dataFile.read(buf, BUFSIZE);
+    dap.readBlock(addr, check);
+    if (memcmp(buf, check, BUFSIZE) != 0) {
+      Serial.print("mismatch at 0x");
+      Serial.println(addr, HEX);
+      error("Verify failed");
+    }
+    addr += BUFSIZE;
+  }
+  dataFile.close();
+  Serial.println("OK");
+
+  // program_start() sets BOOTPROT to 7 (nothing protected) and leaves it
+  // there. 0x02 protects the first 8 KB, the SAMD21 bootloader region.
+  Serial.print("Protecting boot region... ");
+  if (!dap.protectBoot()) {
+    error(dap.error_message);
+  }
+  Serial.println("8 KB");
 
   dap.deselect();
   dap.dap_disconnect();
+
+  // This board's USB port is the link to the PC, so it cannot see the
+  // target enumerate. Pulse reset and let the target's own cable do that.
+  pinMode(SWRST, OUTPUT);
+  digitalWrite(SWRST, LOW);
+  delay(10);
+  digitalWrite(SWRST, HIGH);
+
+  Serial.println("Target released.");
+  Serial.println("Check the PC for the target's USB device.");
+  Serial.println("\nDone!");
 }
 
 void loop() {
