@@ -33,16 +33,19 @@ void setup() {
 
   dap.begin(SWCLK, SWDIO, SWRST, &error);
 
-  // SdFat's default asks for 50 MHz. On the Feather M0 the SAMD21 SPI
-  // divider turns any request above 24 MHz into 24 MHz, and this card
-  // slot does not answer at that speed. 12 MHz divides the 48 MHz
-  // SERCOM clock evenly; 4 MHz is the fallback.
+  // Default first (SdFat asks for 50 MHz). Some boards, including the
+  // Feather M0 Adalogger, turn that into a clock the card will not
+  // answer, so fall back to 12 MHz and then 4 MHz.
   Serial.println("Initializing SD card...");
-  if (!SD.begin(SD_CS, SD_SCK_MHZ(12))) {
-    Serial.println("12 MHz init failed, retrying at 4 MHz");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("Default speed failed, retrying at 12 MHz");
     SD.end();
-    if (!SD.begin(SD_CS, SD_SCK_MHZ(4))) {
-      error("Card failed, or not present");
+    if (!SD.begin(SD_CS, SD_SCK_MHZ(12))) {
+      Serial.println("12 MHz init failed, retrying at 4 MHz");
+      SD.end();
+      if (!SD.begin(SD_CS, SD_SCK_MHZ(4))) {
+        error("Card failed, or not present");
+      }
     }
   }
   Serial.println("Card initialized");
